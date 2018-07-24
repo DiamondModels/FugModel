@@ -264,7 +264,7 @@ class ppLFERMUM:
         ic_inp.loc[:,'Zb_la'] = ic_inp.loc[:,'Zla'] + ic_inp.loc[:,'Zq_la'] * locsumm.VFPart.Lower_Air
         ic_inp.loc[:,'Zb_ua'] = ic_inp.loc[:,'Zua'] + ic_inp.loc[:,'Zq_ua'] * locsumm.VFPart.Upper_Air
         #Water
-        ic_inp.loc[:,'Zb_w'] = ic_inp.loc[:,'Zw'] + ic_inp.loc[:,'Z_qw'] * locsumm.VFPart.Water
+        ic_inp.loc[:,'Zb_wat'] = ic_inp.loc[:,'Zw'] + ic_inp.loc[:,'Z_qw'] * locsumm.VFPart.Water
         #Soil
         ic_inp.loc[:,'Zb_soil'] = ic_inp.loc[:,'Zla'] * locsumm.VFAir.Soil+\
             ic_inp.loc[:,'Zw'] * locsumm.VFWat.Soil + \
@@ -289,33 +289,33 @@ class ppLFERMUM:
         
         #Calculate advective (G) inflows(mol/m³ * m³/h = mol/h)
         if 'LairTotInflow' in ic_inp.columns:
-            ic_inp.loc[:,'Gcb_la'] = locsumm.AdvFlow.Lower_Air * ic_inp.LairTotInflow
+            ic_inp.loc[:,'Gcb_1'] = locsumm.AdvFlow.Lower_Air * ic_inp.LairTotInflow
         else:
-            ic_inp.loc[:,'Gcb_la'] = 0
+            ic_inp.loc[:,'Gcb_1'] = 0
         if 'UairTotInflow' in ic_inp.columns:
-            ic_inp.loc[:,'Gcb_ua'] = locsumm.AdvFlow.Upper_Air * ic_inp.UairTotInflow
+            ic_inp.loc[:,'Gcb_2'] = locsumm.AdvFlow.Upper_Air * ic_inp.UairTotInflow
         else:
-            ic_inp.loc[:,'Gcb_ua'] = 0
+            ic_inp.loc[:,'Gcb_2'] = 0
         if 'WatInflow' in ic_inp.columns:
-            ic_inp.loc[:,'Gcb_w'] = locsumm.AdvFlow.Water * ic_inp.WatInflow
+            ic_inp.loc[:,'Gcb_3'] = locsumm.AdvFlow.Water * ic_inp.WatInflow
         else:
-            ic_inp.loc[:,'Gcb_w'] = 0
+            ic_inp.loc[:,'Gcb_3'] = 0
         if 'SoilInflow' in ic_inp.columns: #add groundwater advective inflow
-            ic_inp.loc[:,'Gcb_soil'] = locsumm.AdvFlow.Soil * ic_inp.SoilInflow
+            ic_inp.loc[:,'Gcb_4'] = locsumm.AdvFlow.Soil * ic_inp.SoilInflow
         else:
-            ic_inp.loc[:,'Gcb_soil'] = 0
+            ic_inp.loc[:,'Gcb_4'] = 0
             
         #D Values 
         #Advection out from atmosphere and water
         ic_inp.loc[:,'D_adv_la'] = locsumm.AdvFlow.Lower_Air * ic_inp.Zb_la
         ic_inp.loc[:,'D_adv_ua'] = locsumm.AdvFlow.Upper_Air * ic_inp.Zb_la
-        ic_inp.loc[:,'D_adv_w'] = locsumm.AdvFlow.Water * ic_inp.Zb_w
+        ic_inp.loc[:,'D_adv_w'] = locsumm.AdvFlow.Water * ic_inp.Zb_wat
         #Reaction- did not do a good job of indexing to make code smoother but this works
         ic_inp.loc[:,'D_rxn_la'] = locsumm.V.Lower_Air * ((1 - locsumm.VFPart.Lower_Air)\
                   * ic_inp.Zla * ic_inp.air_rrxn + locsumm.VFPart.Lower_Air * ic_inp.Zq_la * ic_inp.airq_rrxn)
         ic_inp.loc[:,'D_rxn_ua'] = locsumm.V.Upper_Air * ((1 - locsumm.VFPart.Upper_Air)\
                   * ic_inp.Zua * ic_inp.air_rrxn + locsumm.VFPart.Upper_Air * ic_inp.Zq_ua * ic_inp.airq_rrxn)
-        ic_inp.loc[:,'D_rxn_wat'] = locsumm.V.Water * ic_inp.loc[:,'Zb_w']*ic_inp.wat_rrxn
+        ic_inp.loc[:,'D_rxn_wat'] = locsumm.V.Water * ic_inp.loc[:,'Zb_wat']*ic_inp.wat_rrxn
         ic_inp.loc[:,'D_rxn_soil'] = locsumm.V.Soil * ic_inp.loc[:,'Zb_soil']*ic_inp.soil_rrxn
         ic_inp.loc[:,'D_rxn_sed'] = locsumm.V.Sediment * ic_inp.loc[:,'Zb_sed']*ic_inp.sed_rrxn
         ic_inp.loc[:,'D_rxn_veg'] = locsumm.V.Vegetation * ic_inp.loc[:,'Zb_veg']*ic_inp.veg_rrxn
@@ -389,7 +389,7 @@ class ppLFERMUM:
         ic_inp.loc[:,'D_bx'] = locsumm.Area.Sediment * ic_inp.Zsed * params.Value.Ubx #Sed burial
         #Water and Film
         ic_inp.loc[:,'D_73'] = locsumm.Area.Film * kfw * ic_inp.Zb_film #Soil to water
-        ic_inp.loc[:,'D_37'] = 0 #Water to soil
+        ic_inp.loc[:,'D_37'] = 0 #Water to film
         #Soil and Veg
         ic_inp.loc[:,'D_cd'] = locsumm.Area.Vegetation * params.Value.RainRate \
         *(params.Value.Ifw - params.Value.Ilw)*params.Value.lamb * ic_inp.Zq_la  #Canopy drip
@@ -407,22 +407,24 @@ class ppLFERMUM:
         ic_inp.loc[:,'DT7'] = ic_inp.D_71 + ic_inp.D_73 + ic_inp.D_rxn_film #Film
         
         #Define total inputs (RHS of matrix) for each compartment
+        #Note that if you run backwards calcs to calculate the inputs for a cell these are NOT overwritten, so these
+        #should not be referenced except with that in mind.
         if 'LairEmiss' in ic_inp.columns:
-            ic_inp.loc[:,'inp_1'] = ic_inp.loc[:,'Gcb_la'] + ic_inp.loc[:,'LairEmiss']
+            ic_inp.loc[:,'inp_1'] = ic_inp.loc[:,'Gcb_1'] + ic_inp.loc[:,'LairEmiss']
         else:
-            ic_inp.loc[:,'inp_1'] = ic_inp.loc[:,'Gcb_la']
+            ic_inp.loc[:,'inp_1'] = ic_inp.loc[:,'Gcb_1']
         if 'UairEmiss' in ic_inp.columns:
-            ic_inp.loc[:,'inp_2'] = ic_inp.loc[:,'Gcb_ua'] + ic_inp.loc[:,'UairEmiss']
+            ic_inp.loc[:,'inp_2'] = ic_inp.loc[:,'Gcb_2'] + ic_inp.loc[:,'UairEmiss']
         else:
-            ic_inp.loc[:,'inp_2'] = ic_inp.loc[:,'Gcb_ua']
+            ic_inp.loc[:,'inp_2'] = ic_inp.loc[:,'Gcb_2']
         if 'WatEmiss' in ic_inp.columns:
-            ic_inp.loc[:,'inp_3'] = ic_inp.loc[:,'Gcb_w'] + ic_inp.loc[:,'WatEmiss']
+            ic_inp.loc[:,'inp_3'] = ic_inp.loc[:,'Gcb_3'] + ic_inp.loc[:,'WatEmiss']
         else: 
-            ic_inp.loc[:,'inp_3'] = ic_inp.loc[:,'Gcb_w']
+            ic_inp.loc[:,'inp_3'] = ic_inp.loc[:,'Gcb_3']
         if 'SoilEmiss' in ic_inp.columns:
-            ic_inp.loc[:,'inp_4']  = ic_inp.loc[:,'Gcb_soil'] + ic_inp.loc[:,'SoilEmiss']
+            ic_inp.loc[:,'inp_4']  = ic_inp.loc[:,'Gcb_4'] + ic_inp.loc[:,'SoilEmiss']
         else:
-            ic_inp.loc[:,'inp_4']  = ic_inp.loc[:,'Gcb_soil']
+            ic_inp.loc[:,'inp_4']  = ic_inp.loc[:,'Gcb_4']
         if 'SedEmiss' in ic_inp.columns:
             ic_inp.loc[:,'inp_5']  = ic_inp.loc[:,'SedEmiss']
         else: 
@@ -435,7 +437,23 @@ class ppLFERMUM:
             ic_inp.loc[:,'inp_7']  = ic_inp.loc[:,'FilmEmiss']
         else: 
             ic_inp.loc[:,'inp_7']  = 0
-                   
+            
+        #Define target fugacity in mol/m³/Pa. Note that the target should be a fugacity!!
+        if 'LAirConc' in ic_inp.columns:
+            ic_inp.loc[:,'targ_1'] = ic_inp.loc[:,'LAirConc']/ic_inp.MolMass/ic_inp.Zb_la
+        if 'UAirConc' in ic_inp.columns:
+            ic_inp.loc[:,'targ_2'] = ic_inp.loc[:,'UAirConc']/ic_inp.MolMass/ic_inp.Zb_ua
+        if 'WatConc' in ic_inp.columns:
+            ic_inp.loc[:,'targ_3'] = ic_inp.loc[:,'WatConc']/ic_inp.MolMass/ic_inp.Zb_wat
+        if 'SoilConc' in ic_inp.columns:
+            ic_inp.loc[:,'targ_4']  = ic_inp.loc[:,'SoilConc']/ic_inp.MolMass/ic_inp.Zb_soil
+        if 'SedConc' in ic_inp.columns:
+            ic_inp.loc[:,'targ_5']  = ic_inp.loc[:,'SedConc']/ic_inp.MolMass/ic_inp.Zb_sed
+        if 'VegConc' in ic_inp.columns:
+            ic_inp.loc[:,'targ_6']  = ic_inp.loc[:,'VegConc']/ic_inp.MolMass/ic_inp.Zb_veg
+        if 'FilmConc' in ic_inp.columns:
+            ic_inp.loc[:,'targ_7']  = ic_inp.loc[:,'FilmConc']/ic_inp.MolMass/ic_inp.Zb_film
+        
             
         return ic_inp
     
@@ -456,10 +474,10 @@ class ppLFERMUM:
         #Initialize 3d DataArray with numchem data varaiables and coordinates of 7 x 7 (figure out a better way (no panels) later)
         #D_array = pd.Panel(items = ic.Compound,major_axis = range(num_compartments),minor_axis = range(num_compartments)).to_xarray()
         #Initialize output - the calculated fugacity of every compartment
-        fug_name = pd.Series(index = range(num_compartments))
+        col_name = pd.Series(index = range(num_compartments))
         for i in range(num_compartments):
-            fug_name[i] = 'f'+str(i+1)
-        fw_out = pd.DataFrame(index = ic['Compound'],columns = fug_name)
+            col_name[i] = 'f'+str(i+1)
+        fw_out = pd.DataFrame(index = ic['Compound'],columns = col_name)
         
         #generate matrix. Names of D values in ic must conform to these labels:
         #DTj for total D val from compartment j and D_jk for transfer between compartments j and k
@@ -472,13 +490,12 @@ class ppLFERMUM:
                 #Define RHS input for every compartment j
                 inp_name = 'inp_' + str(j + 1) #must have an input for every compartment, even if it is zero
                 inp_val.iloc[j,chem] = -ic.loc[chem,inp_name]
-                fug_name = fug_name, 
                 for k in D_mat.columns: #compartment k, column of D_mat
                     if j == k:
                         DT = 'DT' + str(j + 1)
                         D_mat.iloc[j,k] = -ic.loc[chem,DT]
                     else:
-                        D_val = 'D_' +str(j+1)+str(k+1) #label compartments from 1
+                        D_val = 'D_' +str(k+1)+str(j+1) #label compartments from 1
                         if D_val in ic.columns: #Check if there is transfer between the two compartments
                             D_mat.iloc[j,k] = ic.loc[chem,D_val]
                         else:
@@ -491,17 +508,94 @@ class ppLFERMUM:
         
         return fw_out
 
-    def back_calc(self,ic,num_compartments,target = 1):
+    def backward_calc(self,ic,num_compartments,target_conc = 1,target_emiss = 1):
         """ Inverse modelling to determine emissions from measured concentrations
         as selected by the user through the 'target' attribute.
         Initial_calcs (ic) are calculated at the initialization of the model and 
-        include the matrix values DTi, and D_ij for each compartment. This method needs
-        target concentrations to function. num_compartments (numc) defines the 
-        size of the matrix, target is which compartment the target concentration is for.
+        include the matrix values DTi, D_ij and the target fugacity (where given)
+        for each compartment. This method needs a target fugacity (NOT concentration)
+        to function, but the input in chemsumm is a concentration. num_compartments (numc) defines the 
+        size of the matrix, target_conc tells what compartment (numbered from 1 not 0)
+        the concentration corresponds with, while target_emiss defines which compartment
+        the emissions are to. Default = 1, Lair in ppLFER-MUM
         """
-    
-    
-    
+        #Initialize outputs
+        col_name = pd.Series(index = range(num_compartments))
+        for i in range(num_compartments):
+            col_name[i] = 'f'+str(i+1) #Fugacity for every compartment
+        #Emissions for the target_emiss compartment
+        col_name[num_compartments+1] = 'emiss_'+str(target_emiss)
+        bw_out = pd.DataFrame(index = ic['Compound'],columns = col_name)        
+        #Define target name and check if there is a value for it in the ic dataframe. If not, abort
+        targ_name = 'targ_' + str(target_conc)
+        if targ_name not in ic.columns:
+            return'Please define a target concentration for the chosen compartment, comp_' + str(target_conc)
+        #initialize a matrix of numc x numc compartments.
+        D_mat = pd.DataFrame(index = range(num_compartments),columns = range(num_compartments))
+        #initialize a blank dataframe for input vectors, RHS of matrix.
+        inp_val = pd.DataFrame(index = range(num_compartments),columns = ic.Compound)
+        #Loop over the chemicals, solving for each.
+        for chem in ic.index: #Index of chemical i starting at 0
+            #Put the target fugacity into the output
+            bw_out.iloc[chem,target_conc-1] = ic.loc[chem,targ_name]
+            #Double loop to set matrix values
+            j = 0 #Index to pull values from ic
+            while j < num_compartments: #compartment j, index of D_mat
+                #Define RHS = -Inp(j) - D(Tj)*f(T) for every compartment j using target T
+                D_val = 'D_' +str(target_conc)+str(j+1) #label compartments from 1
+                inp_name = 'inp_' + str(j + 1) #must have an input for every compartment, even if it is zero
+                if j+1 == target_conc: #Need to use DT value for target concentration
+                    DT = 'DT' + str(j + 1)
+                    if j+1 == target_emiss: #Set -Inp(j) to zero for the targ_emiss row, we will subtract GCb(target_emiss) later
+                        inp_val.iloc[j,chem] = ic.loc[chem,DT] * bw_out.iloc[chem,target_conc-1]
+                    else:
+                        inp_val.iloc[j,chem] = ic.loc[chem,DT] * bw_out.iloc[chem,target_conc-1]-ic.loc[chem,inp_name]
+                elif D_val in ic.columns: #check if there is a D(Tj) value
+                    if j+1 == target_emiss: #This is clunky but hopefully functional
+                        inp_val.iloc[j,chem] = -ic.loc[chem,D_val] * bw_out.iloc[chem,target_conc-1]
+                    else:
+                        inp_val.iloc[j,chem] = -ic.loc[chem,inp_name] - ic.loc[chem,D_val]*bw_out.iloc[chem,target_conc-1]
+                else: #If there is no D(Tj) then RHS = -Inp(j), unless it is the target_emiss column again
+                    if j+1 == target_emiss: 
+                        inp_val.iloc[j,chem] = 0
+                    else:
+                        inp_val.iloc[j,chem] = -ic.loc[chem,inp_name]
+          
+                #Set D values across each row
+                k = 0 #Compartment index
+                kk = 0 #Index to fill matrix
+                while k < num_compartments: #compartment k, column of D_mat
+                    if (k+1) == target_conc:
+                        k += 1
+                    if j == k:
+                        DT = 'DT' + str(j + 1)
+                        D_mat.iloc[j,kk] = -ic.loc[chem,DT]
+                    else:
+                        D_val = 'D_' +str(k+1)+str(j+1) #label compartments from 1
+                        if D_val in ic.columns: #Check if there is transfer between the two compartments
+                            D_mat.iloc[j,kk] = ic.loc[chem,D_val]
+                        else:
+                            D_mat.iloc[j,kk] = 0 #If no transfer, set to 0
+                    if k+1 == num_compartments: #Final column is the input to the target_emiss compartment
+                        if (j+1) == target_emiss: #This is 1 for the target_emiss column and 0 everywhere else
+                            D_mat.iloc[j,kk+1] = 1
+                        else:
+                            D_mat.iloc[j,kk+1] = 0
+                    k +=1
+                    kk += 1
+                j += 1
+            #Solve for fugsinp = D_mat\inp_val, the last value in fugs is the total inputs
+            lhs = np.array(D_mat,dtype = float)
+            rhs = np.array(inp_val.iloc[:,chem],dtype = float)
+            fugsinp = np.linalg.solve(lhs,rhs)
+            #Subtract out the Gcb to get emissions from total inputs
+            gcb_name = 'Gcb_' + str(target_emiss)
+            fugsinp[-1] = fugsinp[-1] - ic.loc[chem,gcb_name]
+            #bwout units are mol/m³/pa for fugacities, mol/h for emissions
+            bw_out.iloc[chem,0:target_conc-1] = fugsinp[0:target_conc-1]
+            bw_out.iloc[chem,target_conc:] = fugsinp[target_conc-1:]
+        return bw_out
+            
     
     
     
