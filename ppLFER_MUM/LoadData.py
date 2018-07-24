@@ -10,7 +10,7 @@ import pandas as pd
 
 #For ppLFER-MUM
 #chemsumm = pd.read_csv('OPECHEMSUMM.csv') 
-chemsumm = pd.read_csv('OPECHEMSUMM_Barebones.csv') 
+chemsumm = pd.read_csv('OPECHEMSUMM.csv') 
 #Location summary for the modelled area. Descriptors should be in the first column (0)
 locsumm = pd.read_csv('locsumm.csv',index_col = 0) 
 #parameters must be loaded with the descriptor in the first column (0) and the values in a "Value" column
