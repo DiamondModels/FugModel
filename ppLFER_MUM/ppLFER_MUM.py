@@ -6,6 +6,7 @@ Created on Wed Jul  4 10:48:58 2018
 """
 import numpy as np
 import pandas as pd
+#import xarray as xr #cite as https://openresearchsoftware.metajnl.com/articles/10.5334/jors.148/
  
 def ppLFER(L,S,A,B,V,l,s,a,b,v,c):
     """polyparameter linear free energy relationship (ppLFER) in the 1 equation form from Goss (2005)
@@ -45,7 +46,7 @@ class ppLFERMUM:
             params (df): Other parameters of the model
             num_compartments (int): (optional) number of non-equilibirum 
             compartments and size of D value matrix
-            name (str): (optional) name of the BC model 
+            name (str): (optional) name of the model run
             pplfer_system (df): (optional) ppLFER system parameters, with 
             columns as systems(Kij or dUij) and the row index as l,s,a,b,v,c 
             e.g pp = pd.DataFrame(index = ['l','s','a','b','v','c']) by default
@@ -67,7 +68,7 @@ class ppLFERMUM:
     
     def run_model(self,calctype):
         if calctype is 'f':
-            return self.forward_calc(self.locsumm,self.chemsumm,self.params,self.pp)
+            return self.forward_calc(self.ic,self.numc)
         #elif calctype is 'b':
         #    back_calc(self,locsumm, chemsumm,params,pp)
         
@@ -200,7 +201,7 @@ class ppLFERMUM:
         ic_inp.loc[:,'wat_rrxn'] = \
         arr_conv(params.Value.Ea,params.Value.TempK,np.log(2)/ic_inp.WatHL)
         #Soil (soil_rrxn) converted from half life (h)
-        ic_inp.loc[:,'wat_rrxn'] = arr_conv(params.Value.Ea,params.Value.TempK,np.log(2)/ic_inp.SoilHL)
+        ic_inp.loc[:,'soil_rrxn'] = arr_conv(params.Value.Ea,params.Value.TempK,np.log(2)/ic_inp.SoilHL)
         #Sediment (sed_rrxn) converted from half life
         ic_inp.loc[:,'sed_rrxn'] = arr_conv(params.Value.Ea,params.Value.TempK,np.log(2)/ic_inp.SedHL)
         #Vegetation is based off of air half life, this can be overridden if chemsumm contains a VegHL column
@@ -280,11 +281,13 @@ class ppLFERMUM:
         ic_inp.loc[:,'Zfilm'] * locsumm.FrnOC.Film
         
         #Partition dependent transport parameters
-        #veg & Film side MTCs
+        #veg & Film side MTCs (m/h)
         ic_inp.loc[:,'k_vv'] = 10 ** (0.704 * ic_inp.LogKocW - 11.2 - ic_inp.LogKaw)
         ic_inp.loc[:,'k_ff'] = 10 ** (0.704 * ic_inp.LogKocW - 11.2 - ic_inp.LogKaw)
+        #lower air particle fraction (phi)
+        ic_inp.loc[:,'phi'] = (ic_inp.Zq_la*locsumm.VFPart.Lower_Air)/ic_inp.Zb_la
         
-        #Calculate advective inflows(mol/m³ * m³/h = mol/h)
+        #Calculate advective (G) inflows(mol/m³ * m³/h = mol/h)
         if 'LairTotInflow' in ic_inp.columns:
             ic_inp.loc[:,'Gcb_la'] = locsumm.AdvFlow.Lower_Air * ic_inp.LairTotInflow
         else:
@@ -297,32 +300,205 @@ class ppLFERMUM:
             ic_inp.loc[:,'Gcb_w'] = locsumm.AdvFlow.Water * ic_inp.WatInflow
         else:
             ic_inp.loc[:,'Gcb_w'] = 0
+        if 'SoilInflow' in ic_inp.columns: #add groundwater advective inflow
+            ic_inp.loc[:,'Gcb_soil'] = locsumm.AdvFlow.Soil * ic_inp.SoilInflow
+        else:
+            ic_inp.loc[:,'Gcb_soil'] = 0
             
-        #D Values
-        #Advection from atmosphere and water
+        #D Values 
+        #Advection out from atmosphere and water
         ic_inp.loc[:,'D_adv_la'] = locsumm.AdvFlow.Lower_Air * ic_inp.Zb_la
         ic_inp.loc[:,'D_adv_ua'] = locsumm.AdvFlow.Upper_Air * ic_inp.Zb_la
         ic_inp.loc[:,'D_adv_w'] = locsumm.AdvFlow.Water * ic_inp.Zb_w
-        #Reaction
+        #Reaction- did not do a good job of indexing to make code smoother but this works
         ic_inp.loc[:,'D_rxn_la'] = locsumm.V.Lower_Air * ((1 - locsumm.VFPart.Lower_Air)\
                   * ic_inp.Zla * ic_inp.air_rrxn + locsumm.VFPart.Lower_Air * ic_inp.Zq_la * ic_inp.airq_rrxn)
         ic_inp.loc[:,'D_rxn_ua'] = locsumm.V.Upper_Air * ((1 - locsumm.VFPart.Upper_Air)\
                   * ic_inp.Zua * ic_inp.air_rrxn + locsumm.VFPart.Upper_Air * ic_inp.Zq_ua * ic_inp.airq_rrxn)
-
-
+        ic_inp.loc[:,'D_rxn_wat'] = locsumm.V.Water * ic_inp.loc[:,'Zb_w']*ic_inp.wat_rrxn
+        ic_inp.loc[:,'D_rxn_soil'] = locsumm.V.Soil * ic_inp.loc[:,'Zb_soil']*ic_inp.soil_rrxn
+        ic_inp.loc[:,'D_rxn_sed'] = locsumm.V.Sediment * ic_inp.loc[:,'Zb_sed']*ic_inp.sed_rrxn
+        ic_inp.loc[:,'D_rxn_veg'] = locsumm.V.Vegetation * ic_inp.loc[:,'Zb_veg']*ic_inp.veg_rrxn
+        #For film particles use a rxn rate 20x lower than the organic phase
+        ic_inp.loc[:,'D_rxn_film'] = locsumm.V.Film * ((1 - locsumm.FrnOC.Film)\
+                  * ic_inp.Zfilm * ic_inp.film_rrxn + locsumm.VFPart.Film * ic_inp.Zqfilm * ic_inp.film_rrxn/20)
         
-        numchems = 0
-        for chems in ic_inp.Compound:
-            numchems = numchems + 1
+        #Inter-compartmental Transport, matrix values are D_ij others are as noted
+        #Lower and Upper Air
+        ic_inp.loc[:,'D_12'] = params.Value.Ua * locsumm.Area.Lower_Air * ic_inp.Zb_la #Lower to Upper
+        ic_inp.loc[:,'D_21'] = params.Value.Ua * locsumm.Area.Upper_Air * ic_inp.Zb_ua #Upper to lower
+        ic_inp.loc[:,'D_st'] = params.Value.Ust * locsumm.Area.Upper_Air * ic_inp.Zb_ua #Upper to stratosphere
+        #Lower Air to Water
+        ic_inp.loc[:,'D_vw'] = (1-ic_inp.phi) * 1 / (1 / (params.Value.kma * locsumm.Area.Water \
+                  * ic_inp.Zla) + 1 / (params.Value.kmw * locsumm.Area.Water * ic_inp.Zw)) #Dry dep of gas
+        ic_inp.loc[:,'D_rw'] = locsumm.Area.Water * ic_inp.Zw * params.Value.RainRate * (1-ic_inp.phi) #Wet dep of gas
+        ic_inp.loc[:,'D_qw'] = locsumm.Area.Water * ic_inp.Zq_la * params.Value.RainRate * params.Value.Q * ic_inp.phi #Wet dep of aerosol
+        ic_inp.loc[:,'D_dw'] = locsumm.Area.Water * ic_inp.Zq_la * locsumm.VFPart.Lower_Air\
+                  * params.Value.Up *params.Value.Q * ic_inp.phi #dry dep of aerosol
+        ic_inp.loc[:,'D_13'] = ic_inp.D_vw + ic_inp.D_rw + ic_inp.D_qw + ic_inp.D_dw #Air to water
+        ic_inp.loc[:,'D_31'] = ic_inp.D_vw #Water to air
+        #Lair and Soil
+        ic_inp.loc[:,'D_vs'] = (1-Ifd)*(1-ic_inp.phi)*1/(1/(params.Value.ksa*locsumm.Area.Soil \
+                  *ic_inp.Zla)+Y4/(locsumm.Area.Soil*ic_inp.Bea*ic_inp.Zla+locsumm.Area.Soil*ic_inp.Bew*ic_inp.Zw)) #Dry dep of gas
+        ic_inp.loc[:,'D_rs'] = locsumm.Area.Soil * ic_inp.Zw * params.Value.RainRate \
+                  * (1-params.Value.Ifw) * (1-ic_inp.phi) #Wet dep of gas
+        ic_inp.loc[:,'D_qs'] = locsumm.Area.Soil * ic_inp.Zq_la * params.Value.RainRate \
+                  * params.Value.Q * (1-params.Value.Ifw)  * ic_inp.phi #Wet dep of aerosol
+        ic_inp.loc[:,'D_ds'] = locsumm.Area.Soil * ic_inp.Zq_la *  params.Value.Up \
+                  *params.Value.Q *locsumm.VFPart.Lower_Air * ic_inp.phi* (1-Ifd) #dry dep of aerosol
+        ic_inp.loc[:,'D_14'] = ic_inp.D_vs + ic_inp.D_rs + ic_inp.D_qs + ic_inp.D_ds #Air to soil
+        ic_inp.loc[:,'D_41'] = ic_inp.D_vs #soil to air        
+        #Lair and Veg
+        ic_inp.loc[:,'D_vv'] = Ifd*(1-ic_inp.phi)*1/(1/(ic_inp.k_av*locsumm.Area.Vegetation\
+                  *ic_inp.Zla)+1/(locsumm.Area.Vegetation*ic_inp.k_vv*ic_inp.Zveg)) #Dry dep of gas
+        ic_inp.loc[:,'D_rv'] = locsumm.Area.Vegetation * ic_inp.Zw * params.Value.RainRate \
+                  * params.Value.Ifw * (1-ic_inp.phi) #Wet dep of gas
+        ic_inp.loc[:,'D_qv'] = locsumm.Area.Vegetation * ic_inp.Zq_la * params.Value.RainRate \
+                  * params.Value.Q * params.Value.Ifw * locsumm.VFPart.Lower_Air * ic_inp.phi #Wet dep of aerosol
+        ic_inp.loc[:,'D_dv'] = locsumm.Area.Vegetation * ic_inp.Zq_la * locsumm.VFPart.Lower_Air \
+                  *params.Value.Up *Ifd*params.Value.Q * ic_inp.phi #dry dep of aerosol
+        ic_inp.loc[:,'D_16'] = ic_inp.D_vv + ic_inp.D_rv + ic_inp.D_qv + ic_inp.D_dv #Air to veg
+        ic_inp.loc[:,'D_61'] = ic_inp.D_vv #veg to air
+        #Lair and film
+        ic_inp.loc[:,'D_vf'] = (1-ic_inp.phi)*1/(1/(ic_inp.k_af*locsumm.Area.Film\
+                  *ic_inp.Zla)+1/(locsumm.Area.Film*ic_inp.k_ff*ic_inp.Zfilm)) #Dry dep of gas
+        ic_inp.loc[:,'D_rf'] = locsumm.Area.Film*ic_inp.Zw*params.Value.RainRate*(1-ic_inp.phi) #Wet dep of gas
+        ic_inp.loc[:,'D_qf'] = locsumm.Area.Film * ic_inp.Zq_la * params.Value.RainRate \
+                  * params.Value.Q* locsumm.VFPart.Lower_Air*ic_inp.phi #Wet dep of aerosol
+        ic_inp.loc[:,'D_df'] = locsumm.Area.Film * ic_inp.Zq_la * locsumm.VFPart.Lower_Air\
+                  * params.Value.Up* params.Value.Q * ic_inp.phi #dry dep of aerosol
+        ic_inp.loc[:,'D_17'] = ic_inp.D_vf + ic_inp.D_rf + ic_inp.D_qf + ic_inp.D_df #Air to film
+        ic_inp.loc[:,'D_71'] = ic_inp.D_vf #film to air
+        #Zrain based on D values & DRain (total), used just for assessing rain concentrations
+        ic_inp.loc[:,'DRain'] = ic_inp.D_rw + ic_inp.D_qw + ic_inp.D_rs + ic_inp.D_qs \
+                  + ic_inp.D_rv + ic_inp.D_qv + ic_inp.D_rf + ic_inp.D_qf
+        ic_inp.loc[:,'ZRain'] = ic_inp.DRain / (locsumm.Area.Lower_Air * params.Value.RainRate) 
+        #Water and Soil
+        ic_inp.loc[:,'D_sw'] = locsumm.Area.Soil * ic_inp.Zsoil * params.Value.Usw  #Solid run off to water
+        ic_inp.loc[:,'D_ww'] = locsumm.Area.Soil * ic_inp.Zw * params.Value.Uww  #Water run off to water
+        ic_inp.loc[:,'D_43'] = ic_inp.D_sw + ic_inp.D_ww #Soil to water
+        ic_inp.loc[:,'D_34'] = 0 #Water to soil
+        ic_inp.loc[:,'D_sg'] = locsumm.Area.Soil * ic_inp.Zw * Usg #Soil to groundwater
+        #Water and Sediment (x)
+        ic_inp.loc[:,'D_tx'] = 1/(1/(params.Value.kxw*locsumm.Area.Sediment\
+                  *ic_inp.Zw)+Y5/(locsumm.Area.Sediment*ic_inp.Bwx*ic_inp.Zw)) #Uptake by sediment
+        ic_inp.loc[:,'D_dx'] = locsumm.Area.Sediment * ic_inp.Z_qw * params.Value.Udx  #Sediment deposition - should we have VFpart.Water?
+        ic_inp.loc[:,'D_rx'] = locsumm.Area.Sediment * ic_inp.Zsed * params.Value.Urx  #Sediment resuspension
+        ic_inp.loc[:,'D_35'] = ic_inp.D_tx + ic_inp.D_dx #Water to Sed
+        ic_inp.loc[:,'D_53'] = ic_inp.D_rx #Sed to Water
+        ic_inp.loc[:,'D_bx'] = locsumm.Area.Sediment * ic_inp.Zsed * params.Value.Ubx #Sed burial
+        #Water and Film
+        ic_inp.loc[:,'D_73'] = locsumm.Area.Film * kfw * ic_inp.Zb_film #Soil to water
+        ic_inp.loc[:,'D_37'] = 0 #Water to soil
+        #Soil and Veg
+        ic_inp.loc[:,'D_cd'] = locsumm.Area.Vegetation * params.Value.RainRate \
+        *(params.Value.Ifw - params.Value.Ilw)*params.Value.lamb * ic_inp.Zq_la  #Canopy drip
+        ic_inp.loc[:,'D_we'] = locsumm.Area.Vegetation * params.Value.kwe * ic_inp.Zveg   #Wax erosion
+        ic_inp.loc[:,'D_lf'] = locsumm.V.Vegetation * ic_inp.Zb_veg * params.Value.Rlf  #litterfall
+        ic_inp.loc[:,'D_46'] = locsumm.V.Soil * params.Value.Rs * ic_inp.Zb_soil #Soil to veg
+        ic_inp.loc[:,'D_64'] = ic_inp.D_cd + ic_inp.D_we + ic_inp.D_lf #Veg to soil
+        #Total D-Values
+        ic_inp.loc[:,'DT1'] = ic_inp.D_12 + ic_inp.D_13 + ic_inp.D_14 + ic_inp.D_16 + ic_inp.D_17 + ic_inp.D_adv_la + ic_inp.D_rxn_la #Lair
+        ic_inp.loc[:,'DT2'] = ic_inp.D_21 + ic_inp.D_st + ic_inp.D_adv_ua + ic_inp.D_rxn_ua #Uair
+        ic_inp.loc[:,'DT3'] = ic_inp.D_31 + ic_inp.D_35 + ic_inp.D_adv_w + ic_inp.D_rxn_wat #Water
+        ic_inp.loc[:,'DT4'] = ic_inp.D_41 + ic_inp.D_43 + ic_inp.D_46 + + ic_inp.D_rxn_soil + ic_inp.D_sg #Soil
+        ic_inp.loc[:,'DT5'] = ic_inp.D_53 + ic_inp.D_rxn_sed + ic_inp.D_bx #Sediment
+        ic_inp.loc[:,'DT6'] = ic_inp.D_61 + ic_inp.D_64 + ic_inp.D_rxn_veg #Vegetation
+        ic_inp.loc[:,'DT7'] = ic_inp.D_71 + ic_inp.D_73 + ic_inp.D_rxn_film #Film
         
-        #Calculate Z-Values, ZB_j is the bulk Z value for compartment j
-        #0 - Air
-        # res.loc[:,'Zb_LAir']=1/(R*locsumm.params.Value.Temp)
+        #Define total inputs (RHS of matrix) for each compartment
+        if 'LairEmiss' in ic_inp.columns:
+            ic_inp.loc[:,'inp_1'] = ic_inp.loc[:,'Gcb_la'] + ic_inp.loc[:,'LairEmiss']
+        else:
+            ic_inp.loc[:,'inp_1'] = ic_inp.loc[:,'Gcb_la']
+        if 'UairEmiss' in ic_inp.columns:
+            ic_inp.loc[:,'inp_2'] = ic_inp.loc[:,'Gcb_ua'] + ic_inp.loc[:,'UairEmiss']
+        else:
+            ic_inp.loc[:,'inp_2'] = ic_inp.loc[:,'Gcb_ua']
+        if 'WatEmiss' in ic_inp.columns:
+            ic_inp.loc[:,'inp_3'] = ic_inp.loc[:,'Gcb_w'] + ic_inp.loc[:,'WatEmiss']
+        else: 
+            ic_inp.loc[:,'inp_3'] = ic_inp.loc[:,'Gcb_w']
+        if 'SoilEmiss' in ic_inp.columns:
+            ic_inp.loc[:,'inp_4']  = ic_inp.loc[:,'Gcb_soil'] + ic_inp.loc[:,'SoilEmiss']
+        else:
+            ic_inp.loc[:,'inp_4']  = ic_inp.loc[:,'Gcb_soil']
+        if 'SedEmiss' in ic_inp.columns:
+            ic_inp.loc[:,'inp_5']  = ic_inp.loc[:,'SedEmiss']
+        else: 
+            ic_inp.loc[:,'inp_5']  = 0
+        if 'VegEmiss' in ic_inp.columns:
+            ic_inp.loc[:,'inp_6']  = ic_inp.loc[:,'VegEmiss']
+        else: 
+            ic_inp.loc[:,'inp_6']  = 0
+        if 'FilmEmiss' in ic_inp.columns:
+            ic_inp.loc[:,'inp_7']  = ic_inp.loc[:,'FilmEmiss']
+        else: 
+            ic_inp.loc[:,'inp_7']  = 0
+                   
+            
         return ic_inp
     
 
+    def forward_calc(self,ic,num_compartments):
+        """ Perform forward calculations to determine model concentrations
+        based on input emissions. initial_calcs (ic) are calculated at the initialization
+        of the model and include the matrix values DTi, and D_ij for each compartment 
+        num_compartments (numc) defines the size of the matrix
+        """
+        #Determine number of chemicals
+        numchems = 0
+        for chems in ic.Compound:
+            numchems = numchems + 1
+            
+        #Initialize dataframe of n x n D values, D_mat
+        #D_mat = pd.DataFrame(index = range(num_compartments),columns = range(num_compartments))
+        #Initialize 3d DataArray with numchem data varaiables and coordinates of 7 x 7 (figure out a better way (no panels) later)
+        #D_array = pd.Panel(items = ic.Compound,major_axis = range(num_compartments),minor_axis = range(num_compartments)).to_xarray()
+        #Initialize output - the calculated fugacity of every compartment
+        fug_name = pd.Series(index = range(num_compartments))
+        for i in range(num_compartments):
+            fug_name[i] = 'f'+str(i+1)
+        fw_out = pd.DataFrame(index = ic['Compound'],columns = fug_name)
+        
+        #generate matrix. Names of D values in ic must conform to these labels:
+        #DTj for total D val from compartment j and D_jk for transfer between compartments j and k
+        #Initialize a blank matrix of D values. We will iterate across this to solve for each compound
+        D_mat = pd.DataFrame(index = range(num_compartments),columns = range(num_compartments))
+        #initialize a blank dataframe for input vectors, RHS of matrix
+        inp_val = pd.DataFrame(index = range(num_compartments),columns = ic.Compound)
+        for chem in ic.index: #Index of chemical i
+            for j in D_mat.index: #compartment j, index of D_mat
+                #Define RHS input for every compartment j
+                inp_name = 'inp_' + str(j + 1) #must have an input for every compartment, even if it is zero
+                inp_val.iloc[j,chem] = -ic.loc[chem,inp_name]
+                fug_name = fug_name, 
+                for k in D_mat.columns: #compartment k, column of D_mat
+                    if j == k:
+                        DT = 'DT' + str(j + 1)
+                        D_mat.iloc[j,k] = -ic.loc[chem,DT]
+                    else:
+                        D_val = 'D_' +str(j+1)+str(k+1) #label compartments from 1
+                        if D_val in ic.columns: #Check if there is transfer between the two compartments
+                            D_mat.iloc[j,k] = ic.loc[chem,D_val]
+                        else:
+                            D_mat.iloc[j,k] = 0 #If no transfer, set to 0
+            #Solve for fugacities f = D_mat\inp_val
+            lhs = np.array(D_mat,dtype = float)
+            rhs = np.array(inp_val.iloc[:,chem],dtype = float)
+            fugs = np.linalg.solve(lhs,rhs)
+            fw_out.iloc[chem,:] = fugs
+        
+        return fw_out
 
-    
+    def back_calc(self,ic,num_compartments,target = 1):
+        """ Inverse modelling to determine emissions from measured concentrations
+        as selected by the user through the 'target' attribute.
+        Initial_calcs (ic) are calculated at the initialization of the model and 
+        include the matrix values DTi, and D_ij for each compartment. This method needs
+        target concentrations to function. num_compartments (numc) defines the 
+        size of the matrix, target is which compartment the target concentration is for.
+        """
     
     
     

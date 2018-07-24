@@ -4,7 +4,7 @@ RainRate,1.01E-04
 WindSpeed,3.66E+00
 LAI,1.22E+00
 RH,6.96E+01
-ua,8.18E+01
+Ua,8.18E+01
 kma,3.00E+00
 kmw,3.00E-02
 Q,2.00E+05
@@ -23,7 +23,7 @@ FilmThickness,1.00E-07
 W,2.50E-01
 Rs,3.58E-07
 Ilw,1.90E-01
-lambda,8.70E-04
+lamb,8.70E-04
 kwe,8.05E-08
 Rlf,2.31E-04
 Ust,1.00E-02
