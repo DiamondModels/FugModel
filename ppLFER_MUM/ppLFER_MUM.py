@@ -6,6 +6,7 @@ Created on Wed Jul  4 10:48:58 2018
 """
 import numpy as np
 import pandas as pd
+#import pdb #Turn on for error checking
 #import xarray as xr #cite as https://openresearchsoftware.metajnl.com/articles/10.5334/jors.148/
  
 def ppLFER(L,S,A,B,V,l,s,a,b,v,c):
@@ -66,11 +67,11 @@ class ppLFERMUM:
         #self.fw_res = self.forward_calc('f')
         #self.bw_res = self.forward_calc('b')
     
-    def run_model(self,calctype):
-        if calctype is 'f':
+    def run_model(self,calctype='f'):
+        if calctype is 'f': #Peform forward calcs
             return self.forward_calc(self.ic,self.numc)
-        #elif calctype is 'b':
-        #    back_calc(self,locsumm, chemsumm,params,pp)
+        elif calctype is 'b': #Perform backward calcs with lair concentration as target and emissions location
+            return self.backward_calc(self.ic,self.numc)
         
     #def input_calcs(self,locsumm,chemsumm,params,pp):
     def input_calc(self,locsumm,chemsumm,params,pp):
@@ -78,14 +79,14 @@ class ppLFERMUM:
         bioretention cell is an n compartment fugacity model solved at steady
         state using the compartment parameters from bcsumm and the chemical
         parameters from chemsumm. These can be changed, but this may be bad form """
-        
+        #pdb.set_trace()
         #Initialize used inputs dataframe with input properties
         ic_inp = pd.DataFrame.copy(chemsumm)        
         #Declare constants and calculate non-chemical dependent parameters
         #Should I make if statements here too? Many of the params.Value items could be here instead.
         R = 8.314 #Ideal gas constant, J/mol/K
         locsumm.loc[:,'V']= locsumm.Area*locsumm.Depth #Add volumes  m³
-        params.Value['TempK'] = params.Value['Temp'] +273.15 #°C to K
+        params.loc['TempK','Value'] = params.Value['Temp'] +273.15 #°C to K
         #Calculate air density kg/m^3
         locsumm.loc[['Lower_Air','Upper_Air'],'Density'] = 0.029 * 101325 / (R * params.Value.TempK)
         Y4 = locsumm.Depth.Soil/2 #Soil diffusion path length (m)
@@ -113,32 +114,32 @@ class ppLFERMUM:
         ic_inp.loc[:,'k_af'] = ic_inp.AirDiffCoeff / delta_blf
         
         #ppLFER system parameters - initialize defaults if not there already
-        if hasattr(self,'pp'):
+        if pp is None:
             pp = pd.DataFrame(index = ['l','s','a','b','v','c'])
-            #Aerosol-air ppLFER system parameters Arp (2008)
-            if 'logKqa' not in pp.columns:
-                pp['logKqa'] = [0.63,1.38,3.21,0.42,0.98,-7.24]
-            #Organic Carbon - Water ppLFER system parameters Bronner & Goss (2011)
-            if 'logKocW' not in pp.columns:
-                pp['logKocW'] = [0.54,-0.98,-0.42,-3.34,1.2,0.02]
-            #K Storage lipid - water Geisler, Endo, & Goss 2012
-            if 'logKslW' not in pp.columns:
-                pp['logKslW'] = [0.58,-1.62,-1.93,-4.15,1.99,0.55]
-            #K Air - water Goss (2005)
-            if 'logKaw' not in pp.columns:
-                pp['logKaw'] = [-0.48,-2.07,-3.367,-4.87,2.55,0.59]
-            #dU Storage lipid - Water Geisler et al. 2012 (kJ/mol)
-            if 'dUslW' not in pp.columns:
-                pp['dUslW'] = [10.51,-49.29,-16.36,70.39,-66.19,38.95]
-            #dU Octanol water Ulrich et al. (2017) (J/mol)
-            if 'dUow' not in pp.columns:
-                pp['dUow'] = [8.26,-5.31,20.1,-34.27,-18.88,-1.75]
-            #dU Octanol air Mintz et al. (2008) (kJ/mol)
-            if 'dUoa' not in pp.columns:
-                pp['dUoa'] = [53.66,-6.04,53.66,9.19,-1.57,6.67]
-            #dU Water-Air Mintz et al. (2008) (kJ/mol)
-            if 'dUaw' not in pp.columns:
-                pp['dUaw'] = [-8.26,0.73,-33.56,-43.46,-17.31,-8.41]
+        #Aerosol-air ppLFER system parameters Arp (2008)
+        if 'logKqa' not in pp.columns:
+            pp['logKqa'] = [0.63,1.38,3.21,0.42,0.98,-7.24]
+        #Organic Carbon - Water ppLFER system parameters Bronner & Goss (2011)
+        if 'logKocW' not in pp.columns:
+            pp['logKocW'] = [0.54,-0.98,-0.42,-3.34,1.2,0.02]
+        #K Storage lipid - water Geisler, Endo, & Goss 2012
+        if 'logKslW' not in pp.columns:
+            pp['logKslW'] = [0.58,-1.62,-1.93,-4.15,1.99,0.55]
+        #K Air - water Goss (2005)
+        if 'logKaw' not in pp.columns:
+            pp['logKaw'] = [-0.48,-2.07,-3.367,-4.87,2.55,0.59]
+        #dU Storage lipid - Water Geisler et al. 2012 (kJ/mol)
+        if 'dUslW' not in pp.columns:
+            pp['dUslW'] = [10.51,-49.29,-16.36,70.39,-66.19,38.95]
+        #dU Octanol water Ulrich et al. (2017) (J/mol)
+        if 'dUow' not in pp.columns:
+            pp['dUow'] = [8.26,-5.31,20.1,-34.27,-18.88,-1.75]
+        #dU Octanol air Mintz et al. (2008) (kJ/mol)
+        if 'dUoa' not in pp.columns:
+            pp['dUoa'] = [53.66,-6.04,53.66,9.19,-1.57,6.67]
+        #dU Water-Air Mintz et al. (2008) (kJ/mol)
+        if 'dUaw' not in pp.columns:
+            pp['dUaw'] = [-8.26,0.73,-33.56,-43.46,-17.31,-8.41]
         
         #Check if partition coefficients & dU values have been provided, or only solute descriptors
         #add based on ppLFER if not, then adjust partition coefficients for temperature of system
@@ -185,7 +186,7 @@ class ppLFERMUM:
         ic_inp.loc[:,'KslA'] = ic_inp.KslW / ic_inp.Kaw
         ic_inp.loc[:,'KocA'] = ic_inp.KocW / ic_inp.Kaw
         #Calculate Henry's law constant (H, Pa m³/mol)
-        ic_inp.loc[:,'H'] = ic_inp.Kaw * R * params.Value.Temp
+        ic_inp.loc[:,'H'] = ic_inp.Kaw * R * params.Value.TempK
         
         #Calculate temperature-corrected media reaction rates
         #Air (air_rrxn /hr), 3600 converts from /s
@@ -222,8 +223,8 @@ class ppLFERMUM:
         
         #Calculate Z-values (mol/m³/Pa)
         #Air lower and upper Zla and Zua, in case they are ever changed
-        ic_inp.loc[:,'Zla'] = 1/(R*params.Value.Temp)
-        ic_inp.loc[:,'Zua'] = 1/(R*params.Value.Temp)
+        ic_inp.loc[:,'Zla'] = 1/(R*params.Value.TempK)
+        ic_inp.loc[:,'Zua'] = 1/(R*params.Value.TempK)
         #Dissolved water Zw
         ic_inp.loc[:,'Zw'] = 1/(ic_inp.loc[:,'H'])
         #Soil Solids Zs, index is 3 in the locsumm file
@@ -234,9 +235,8 @@ class ppLFERMUM:
         ic_inp.loc[:,'Zveg'] = ic_inp.KslA*ic_inp.Zla*locsumm.FrnOC.Vegetation
         #Dissolved Film
         ic_inp.loc[:,'Zfilm'] = ic_inp.KslA*ic_inp.Zla*locsumm.FrnOC.Film
-        #Film Aerosol
-        ic_inp.loc[:,'Zqfilm'] = ic_inp.Kqa*ic_inp.Zla*locsumm.loc['Lower_Air','PartDensity']\
-        *locsumm.loc['Lower_Air','PartFrnOC']/1000
+        #Film Aerosol - Kqa is whole particle not just organic fraction
+        ic_inp.loc[:,'Zqfilm'] = ic_inp.Kqa*ic_inp.Zla*locsumm.loc['Lower_Air','PartDensity']*1000
         #Lower and Upper air Aerosol particles - composed of water and particle, with the water fraction defined
         #by hygroscopic growth of the aerosol. Growth is defined as per the Berlin Spring aerosol from Arp et al. (2008)
         if params.Value.RH > 100: #maximum RH = 100%
@@ -278,7 +278,7 @@ class ppLFERMUM:
             ic_inp.loc[:,'Zveg']* (1-locsumm.VFAir.Vegetation -locsumm.VFWat.Vegetation)
         #Film
         ic_inp.loc[:,'Zb_film'] = ic_inp.loc[:,'Zqfilm'] * locsumm.VFPart.Film + \
-        ic_inp.loc[:,'Zfilm'] * locsumm.FrnOC.Film
+        ic_inp.loc[:,'Zfilm'] * params.Value.VFOCFilm
         
         #Partition dependent transport parameters
         #veg & Film side MTCs (m/h)
@@ -320,53 +320,54 @@ class ppLFERMUM:
         ic_inp.loc[:,'D_rxn_sed'] = locsumm.V.Sediment * ic_inp.loc[:,'Zb_sed']*ic_inp.sed_rrxn
         ic_inp.loc[:,'D_rxn_veg'] = locsumm.V.Vegetation * ic_inp.loc[:,'Zb_veg']*ic_inp.veg_rrxn
         #For film particles use a rxn rate 20x lower than the organic phase
-        ic_inp.loc[:,'D_rxn_film'] = locsumm.V.Film * ((1 - locsumm.FrnOC.Film)\
-                  * ic_inp.Zfilm * ic_inp.film_rrxn + locsumm.VFPart.Film * ic_inp.Zqfilm * ic_inp.film_rrxn/20)
+        ic_inp.loc[:,'D_rxn_film'] = locsumm.V.Film * ((params.Value.VFOCFilm* ic_inp.Zfilm)\
+                   * ic_inp.film_rrxn + locsumm.VFPart.Film * ic_inp.Zqfilm * ic_inp.film_rrxn/20)
         
         #Inter-compartmental Transport, matrix values are D_ij others are as noted
         #Lower and Upper Air
         ic_inp.loc[:,'D_12'] = params.Value.Ua * locsumm.Area.Lower_Air * ic_inp.Zb_la #Lower to Upper
         ic_inp.loc[:,'D_21'] = params.Value.Ua * locsumm.Area.Upper_Air * ic_inp.Zb_ua #Upper to lower
         ic_inp.loc[:,'D_st'] = params.Value.Ust * locsumm.Area.Upper_Air * ic_inp.Zb_ua #Upper to stratosphere
-        #Lower Air to Water
-        ic_inp.loc[:,'D_vw'] = (1-ic_inp.phi) * 1 / (1 / (params.Value.kma * locsumm.Area.Water \
+        #Lower Air to Water #Do we want to separate out the particle fraction here too? (1-ic_inp.phi) *
+        ic_inp.loc[:,'D_vw'] =  1 / (1 / (params.Value.kma * locsumm.Area.Water \
                   * ic_inp.Zla) + 1 / (params.Value.kmw * locsumm.Area.Water * ic_inp.Zw)) #Dry dep of gas
         ic_inp.loc[:,'D_rw'] = locsumm.Area.Water * ic_inp.Zw * params.Value.RainRate * (1-ic_inp.phi) #Wet dep of gas
-        ic_inp.loc[:,'D_qw'] = locsumm.Area.Water * ic_inp.Zq_la * params.Value.RainRate * params.Value.Q * ic_inp.phi #Wet dep of aerosol
-        ic_inp.loc[:,'D_dw'] = locsumm.Area.Water * ic_inp.Zq_la * locsumm.VFPart.Lower_Air\
-                  * params.Value.Up *params.Value.Q * ic_inp.phi #dry dep of aerosol
+        ic_inp.loc[:,'D_qw'] = locsumm.Area.Water * params.Value.RainRate * params.Value.Q \
+                  *locsumm.VFPart.Lower_Air * ic_inp.Zq_la  * ic_inp.phi #Wet dep of aerosol
+        ic_inp.loc[:,'D_dw'] = locsumm.Area.Water * params.Value.Up * locsumm.VFPart.Lower_Air\
+                  * ic_inp.Zq_la #dry dep of aerosol
         ic_inp.loc[:,'D_13'] = ic_inp.D_vw + ic_inp.D_rw + ic_inp.D_qw + ic_inp.D_dw #Air to water
         ic_inp.loc[:,'D_31'] = ic_inp.D_vw #Water to air
         #Lair and Soil
-        ic_inp.loc[:,'D_vs'] = (1-Ifd)*(1-ic_inp.phi)*1/(1/(params.Value.ksa*locsumm.Area.Soil \
+        ic_inp.loc[:,'D_vs'] = 1/(1/(params.Value.ksa*locsumm.Area.Soil \
                   *ic_inp.Zla)+Y4/(locsumm.Area.Soil*ic_inp.Bea*ic_inp.Zla+locsumm.Area.Soil*ic_inp.Bew*ic_inp.Zw)) #Dry dep of gas
         ic_inp.loc[:,'D_rs'] = locsumm.Area.Soil * ic_inp.Zw * params.Value.RainRate \
                   * (1-params.Value.Ifw) * (1-ic_inp.phi) #Wet dep of gas
         ic_inp.loc[:,'D_qs'] = locsumm.Area.Soil * ic_inp.Zq_la * params.Value.RainRate \
-                  * params.Value.Q * (1-params.Value.Ifw)  * ic_inp.phi #Wet dep of aerosol
+                  * locsumm.VFPart.Lower_Air * params.Value.Q * (1-params.Value.Ifw)  * ic_inp.phi #Wet dep of aerosol
         ic_inp.loc[:,'D_ds'] = locsumm.Area.Soil * ic_inp.Zq_la *  params.Value.Up \
-                  *params.Value.Q *locsumm.VFPart.Lower_Air * ic_inp.phi* (1-Ifd) #dry dep of aerosol
+                  * locsumm.VFPart.Lower_Air * (1-Ifd) #dry dep of aerosol
         ic_inp.loc[:,'D_14'] = ic_inp.D_vs + ic_inp.D_rs + ic_inp.D_qs + ic_inp.D_ds #Air to soil
         ic_inp.loc[:,'D_41'] = ic_inp.D_vs #soil to air        
         #Lair and Veg
-        ic_inp.loc[:,'D_vv'] = Ifd*(1-ic_inp.phi)*1/(1/(ic_inp.k_av*locsumm.Area.Vegetation\
+        ic_inp.loc[:,'D_vv'] = 1/(1/(ic_inp.k_av*locsumm.Area.Vegetation\
                   *ic_inp.Zla)+1/(locsumm.Area.Vegetation*ic_inp.k_vv*ic_inp.Zveg)) #Dry dep of gas
         ic_inp.loc[:,'D_rv'] = locsumm.Area.Vegetation * ic_inp.Zw * params.Value.RainRate \
                   * params.Value.Ifw * (1-ic_inp.phi) #Wet dep of gas
         ic_inp.loc[:,'D_qv'] = locsumm.Area.Vegetation * ic_inp.Zq_la * params.Value.RainRate \
                   * params.Value.Q * params.Value.Ifw * locsumm.VFPart.Lower_Air * ic_inp.phi #Wet dep of aerosol
         ic_inp.loc[:,'D_dv'] = locsumm.Area.Vegetation * ic_inp.Zq_la * locsumm.VFPart.Lower_Air \
-                  *params.Value.Up *Ifd*params.Value.Q * ic_inp.phi #dry dep of aerosol
+                  *params.Value.Up *Ifd  #dry dep of aerosol
         ic_inp.loc[:,'D_16'] = ic_inp.D_vv + ic_inp.D_rv + ic_inp.D_qv + ic_inp.D_dv #Air to veg
         ic_inp.loc[:,'D_61'] = ic_inp.D_vv #veg to air
         #Lair and film
-        ic_inp.loc[:,'D_vf'] = (1-ic_inp.phi)*1/(1/(ic_inp.k_af*locsumm.Area.Film\
+        ic_inp.loc[:,'D_vf'] = 1/(1/(ic_inp.k_af*locsumm.Area.Film\
                   *ic_inp.Zla)+1/(locsumm.Area.Film*ic_inp.k_ff*ic_inp.Zfilm)) #Dry dep of gas
         ic_inp.loc[:,'D_rf'] = locsumm.Area.Film*ic_inp.Zw*params.Value.RainRate*(1-ic_inp.phi) #Wet dep of gas
         ic_inp.loc[:,'D_qf'] = locsumm.Area.Film * ic_inp.Zq_la * params.Value.RainRate \
                   * params.Value.Q* locsumm.VFPart.Lower_Air*ic_inp.phi #Wet dep of aerosol
         ic_inp.loc[:,'D_df'] = locsumm.Area.Film * ic_inp.Zq_la * locsumm.VFPart.Lower_Air\
-                  * params.Value.Up* params.Value.Q * ic_inp.phi #dry dep of aerosol
+                  * params.Value.Up #dry dep of aerosol
         ic_inp.loc[:,'D_17'] = ic_inp.D_vf + ic_inp.D_rf + ic_inp.D_qf + ic_inp.D_df #Air to film
         ic_inp.loc[:,'D_71'] = ic_inp.D_vf #film to air
         #Zrain based on D values & DRain (total), used just for assessing rain concentrations
@@ -385,7 +386,7 @@ class ppLFERMUM:
         ic_inp.loc[:,'D_dx'] = locsumm.Area.Sediment * ic_inp.Z_qw * params.Value.Udx  #Sediment deposition - should we have VFpart.Water?
         ic_inp.loc[:,'D_rx'] = locsumm.Area.Sediment * ic_inp.Zsed * params.Value.Urx  #Sediment resuspension
         ic_inp.loc[:,'D_35'] = ic_inp.D_tx + ic_inp.D_dx #Water to Sed
-        ic_inp.loc[:,'D_53'] = ic_inp.D_rx #Sed to Water
+        ic_inp.loc[:,'D_53'] = ic_inp.D_tx + ic_inp.D_rx #Sed to Water
         ic_inp.loc[:,'D_bx'] = locsumm.Area.Sediment * ic_inp.Zsed * params.Value.Ubx #Sed burial
         #Water and Film
         ic_inp.loc[:,'D_73'] = locsumm.Area.Film * kfw * ic_inp.Zb_film #Soil to water
@@ -465,6 +466,7 @@ class ppLFERMUM:
         num_compartments (numc) defines the size of the matrix
         """
         #Determine number of chemicals
+        #pdb.set_trace()
         numchems = 0
         for chems in ic.Compound:
             numchems = numchems + 1
@@ -517,9 +519,11 @@ class ppLFERMUM:
         to function, but the input in chemsumm is a concentration. num_compartments (numc) defines the 
         size of the matrix, target_conc tells what compartment (numbered from 1 not 0)
         the concentration corresponds with, while target_emiss defines which compartment
-        the emissions are to. Default = 1, Lair in ppLFER-MUM
+        the emissions are to. Default = 1, Lair in ppLFER-MUM. Currently, the output is
+        a dataframe with the fugacities of each compartment and the emissions in g/h.
         """
         #Initialize outputs
+        #pdb.set_trace()
         col_name = pd.Series(index = range(num_compartments))
         for i in range(num_compartments):
             col_name[i] = 'f'+str(i+1) #Fugacity for every compartment
@@ -591,6 +595,8 @@ class ppLFERMUM:
             #Subtract out the Gcb to get emissions from total inputs
             gcb_name = 'Gcb_' + str(target_emiss)
             fugsinp[-1] = fugsinp[-1] - ic.loc[chem,gcb_name]
+            #Multiply by molar mass to get g/h output
+            fugsinp[-1] = fugsinp[-1] * ic.loc[chem,'MolMass']
             #bwout units are mol/m³/pa for fugacities, mol/h for emissions
             bw_out.iloc[chem,0:target_conc-1] = fugsinp[0:target_conc-1]
             bw_out.iloc[chem,target_conc:] = fugsinp[target_conc-1:]
