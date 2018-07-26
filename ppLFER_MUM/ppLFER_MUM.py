@@ -36,7 +36,8 @@ def arr_conv(Ea,T2,k1,T1 = 298.15,):
     return res
 
 class ppLFERMUM:
-    """ ppLFER based Multimedia Urban Model object. Based off of the model by
+    """
+ ppLFER based Multimedia Urban Model object. Based off of the model by
     Diamond et al (2001) as updated by Rodgers et al. (2018)
         
     Attributes:
@@ -52,9 +53,8 @@ class ppLFERMUM:
             columns as systems(Kij or dUij) and the row index as l,s,a,b,v,c 
             e.g pp = pd.DataFrame(index = ['l','s','a','b','v','c']) by default
             the system will define the ppLFER system as per Rodgers et al. (2018)
-            input_calcs (df): Dataframe describing the system up to the point 
+            ic input_calc (df): Dataframe describing the system up to the point 
             of matrix solution. 
-            ic (df): Dataframe 
     """
     def __init__(self,locsumm,chemsumm,params,num_compartments = 7,name = None,pplfer_system = None):
         self.locsumm = locsumm
@@ -288,12 +288,12 @@ class ppLFERMUM:
         ic_inp.loc[:,'phi'] = (ic_inp.Zq_la*locsumm.VFPart.Lower_Air)/ic_inp.Zb_la
         
         #Calculate advective (G) inflows(mol/m³ * m³/h = mol/h)
-        if 'LairTotInflow' in ic_inp.columns:
-            ic_inp.loc[:,'Gcb_1'] = locsumm.AdvFlow.Lower_Air * ic_inp.LairTotInflow
+        if 'LairInflow' in ic_inp.columns:
+            ic_inp.loc[:,'Gcb_1'] = locsumm.AdvFlow.Lower_Air * ic_inp.LairInflow
         else:
             ic_inp.loc[:,'Gcb_1'] = 0
-        if 'UairTotInflow' in ic_inp.columns:
-            ic_inp.loc[:,'Gcb_2'] = locsumm.AdvFlow.Upper_Air * ic_inp.UairTotInflow
+        if 'UairInflow' in ic_inp.columns:
+            ic_inp.loc[:,'Gcb_2'] = locsumm.AdvFlow.Upper_Air * ic_inp.UairInflow
         else:
             ic_inp.loc[:,'Gcb_2'] = 0
         if 'WatInflow' in ic_inp.columns:
