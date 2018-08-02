@@ -6,49 +6,17 @@ Created on Wed Jul  4 10:48:58 2018
 """
 import numpy as np
 import pandas as pd
-#import pdb #Turn on for error checking
-#import xarray as xr #cite as https://openresearchsoftware.metajnl.com/articles/10.5334/jors.148/
- 
-def ppLFER(L,S,A,B,V,l,s,a,b,v,c):
-    """polyparameter linear free energy relationship (ppLFER) in the 1 equation form from Goss (2005)
-    Upper case letters represent Abraham's solute descriptors (compund specific)
-    while the lower case letters represent the system parameters.
-    """
-    res = L*l+S*s+A*a+B*b+V*v+c
-    return res
+from HelperFuncs import ppLFER, vant_conv, arr_conv, make_ppLFER
+from FugModel import FugModel
 
-def vant_conv(dU,T2,k1,T1 = 298.15,):
-    """Van't Hoff equation conversion of partition coefficients (Kij) from T1 to T2 (K)
-    The default value for T1 is 298.15K. Activation energy should be in J. The 
-    result (res) will be K2 at T2
-    """
-    R = 8.314 #J/mol/K
-    res =  k1 * np.exp((dU / R) * (1 / T1 - 1 / T2))
-    return res
+
+class ppLFERMUM(FugModel):
     
-def arr_conv(Ea,T2,k1,T1 = 298.15,):
-    """Arrhenius equation conversion of rate reaction constants (k) from T1 to T2 (K)
-    The default value for T1 is 298.15K. Activation energy should be in J. The 
-    result (res) will be k2 at . This will work on vectors as well as scalars
-    """
-    R = 8.314 #J/mol/K
-    res =  k1 * np.exp((Ea / R) * (1 / T1 - 1 / T2))
-    return res
-
-class ppLFERMUM:
-    """
- ppLFER based Multimedia Urban Model object. Based off of the model by
+    """ ppLFER based Multimedia Urban Model fugacity model object. Implementation of the model by
     Diamond et al (2001) as updated by Rodgers et al. (2018)
         
     Attributes:
     ----------
-
-            locsumm (df): Properties of the compartments
-            chemsumm (df): phyical-chemical properties of modelled compounds
-            params (df): Other parameters of the model
-            num_compartments (int): (optional) number of non-equilibirum 
-            compartments and size of D value matrix
-            name (str): (optional) name of the model run
             pplfer_system (df): (optional) ppLFER system parameters, with 
             columns as systems(Kij or dUij) and the row index as l,s,a,b,v,c 
             e.g pp = pd.DataFrame(index = ['l','s','a','b','v','c']) by default
@@ -56,32 +24,23 @@ class ppLFERMUM:
             ic input_calc (df): Dataframe describing the system up to the point 
             of matrix solution. 
     """
+    
     def __init__(self,locsumm,chemsumm,params,num_compartments = 7,name = None,pplfer_system = None):
-        self.locsumm = locsumm
-        self.chemsumm = chemsumm
-        self.params = params
-        self.numc = num_compartments
-        self.name = name
+        FugModel. __init__(self,locsumm,chemsumm,params,num_compartments,name)
         self.pp = pplfer_system
         self.ic = self.input_calc(self.locsumm,self.chemsumm,self.params,self.pp)
-        #self.fw_res = self.forward_calc('f')
-        #self.bw_res = self.forward_calc('b')
-    
-    def run_model(self,calctype='f'):
-        if calctype is 'f': #Peform forward calcs
-            return self.forward_calc(self.ic,self.numc)
-        elif calctype is 'b': #Perform backward calcs with lair concentration as target and emissions location
-            return self.backward_calc(self.ic,self.numc)
+
         
-    #def input_calcs(self,locsumm,chemsumm,params,pp):
     def input_calc(self,locsumm,chemsumm,params,pp):
         """ Perform the initial calulations to set up the fugacity matrix. A steady state
-        bioretention cell is an n compartment fugacity model solved at steady
-        state using the compartment parameters from bcsumm and the chemical
-        parameters from chemsumm. These can be changed, but this may be bad form """
+        ppLFERMUM is an n compartment fugacity model solved at steady
+        state using the compartment parameters from locsumm and the chemical
+        parameters from chemsumm, other parameters from params, and a ppLFER system
+        from pp, use pp = None to use the defaults. 
+        """
         #pdb.set_trace()
         #Initialize used inputs dataframe with input properties
-        ic_inp = pd.DataFrame.copy(chemsumm)        
+        ic_inp = pd.DataFrame.copy(chemsumm,deep=True)        
         #Declare constants and calculate non-chemical dependent parameters
         #Should I make if statements here too? Many of the params.Value items could be here instead.
         R = 8.314 #Ideal gas constant, J/mol/K
@@ -100,8 +59,6 @@ class ppLFERMUM:
         Ifd = 1 - np.exp(-2.8 * params.Value.Beta)
         #Soil to groundwater leaching rate from Mackay & Paterson (1991)
         Usg = 0.4 * params.Value.RainRate
-        
-
         #Fraction soil volume occupied by interstitial air and water
         ic_inp.loc[:,'Bea'] = ic_inp.AirDiffCoeff*locsumm.VFAir.Soil**(10/3) \
             /(locsumm.VFAir.Soil +locsumm.VFWat.Soil)**2
@@ -116,34 +73,11 @@ class ppLFERMUM:
         #ppLFER system parameters - initialize defaults if not there already
         if pp is None:
             pp = pd.DataFrame(index = ['l','s','a','b','v','c'])
-        #Aerosol-air ppLFER system parameters Arp (2008)
-        if 'logKqa' not in pp.columns:
-            pp['logKqa'] = [0.63,1.38,3.21,0.42,0.98,-7.24]
-        #Organic Carbon - Water ppLFER system parameters Bronner & Goss (2011)
-        if 'logKocW' not in pp.columns:
-            pp['logKocW'] = [0.54,-0.98,-0.42,-3.34,1.2,0.02]
-        #K Storage lipid - water Geisler, Endo, & Goss 2012
-        if 'logKslW' not in pp.columns:
-            pp['logKslW'] = [0.58,-1.62,-1.93,-4.15,1.99,0.55]
-        #K Air - water Goss (2005)
-        if 'logKaw' not in pp.columns:
-            pp['logKaw'] = [-0.48,-2.07,-3.367,-4.87,2.55,0.59]
-        #dU Storage lipid - Water Geisler et al. 2012 (kJ/mol)
-        if 'dUslW' not in pp.columns:
-            pp['dUslW'] = [10.51,-49.29,-16.36,70.39,-66.19,38.95]
-        #dU Octanol water Ulrich et al. (2017) (J/mol)
-        if 'dUow' not in pp.columns:
-            pp['dUow'] = [8.26,-5.31,20.1,-34.27,-18.88,-1.75]
-        #dU Octanol air Mintz et al. (2008) (kJ/mol)
-        if 'dUoa' not in pp.columns:
-            pp['dUoa'] = [53.66,-6.04,53.66,9.19,-1.57,6.67]
-        #dU Water-Air Mintz et al. (2008) (kJ/mol)
-        if 'dUaw' not in pp.columns:
-            pp['dUaw'] = [-8.26,0.73,-33.56,-43.46,-17.31,-8.41]
+            pp = make_ppLFER(pp)
         
         #Check if partition coefficients & dU values have been provided, or only solute descriptors
         #add based on ppLFER if not, then adjust partition coefficients for temperature of system
-        #Aerosol-Air (Kqa), use octamol-air enthalpy
+        #Aerosol-Air (Kqa), use octanol-air enthalpy
         if 'LogKqa' not in ic_inp.columns:
             ic_inp.loc[:,'LogKqa'] = ppLFER(ic_inp.L,ic_inp.S,\
             ic_inp.A,ic_inp.B,ic_inp.V,pp.logKqa.l,pp.logKqa.s,pp.logKqa.a,pp.logKqa.b,pp.logKqa.v,pp.logKqa.c)
@@ -212,7 +146,7 @@ class ppLFERMUM:
             ic_inp.loc[:,'veg_rrxn'] = 0.1*ic_inp.air_rrxn
         #Same for film
         if 'FilmHL' in ic_inp.columns:
-            ic_inp.loc[:,'film_rrxn'] = arr_conv(params.Value.Ea,params.Value.TempK,np.log(2)/ic_inp.filmHL)
+            ic_inp.loc[:,'film_rrxn'] = arr_conv(params.Value.Ea,params.Value.TempK,np.log(2)/ic_inp.FilmHL)
         else:
             ic_inp.loc[:,'film_rrxn'] = ic_inp.air_rrxn/0.75
         
@@ -455,155 +389,8 @@ class ppLFERMUM:
         if 'FilmConc' in ic_inp.columns:
             ic_inp.loc[:,'targ_7']  = ic_inp.loc[:,'FilmConc']/ic_inp.MolMass/ic_inp.Zb_film
         
-            
+
         return ic_inp
-    
-
-    def forward_calc(self,ic,num_compartments):
-        """ Perform forward calculations to determine model concentrations
-        based on input emissions. initial_calcs (ic) are calculated at the initialization
-        of the model and include the matrix values DTi, and D_ij for each compartment 
-        num_compartments (numc) defines the size of the matrix
-        """
-        #Determine number of chemicals
-        #pdb.set_trace()
-        numchems = 0
-        for chems in ic.Compound:
-            numchems = numchems + 1
-            
-        #Initialize dataframe of n x n D values, D_mat
-        #D_mat = pd.DataFrame(index = range(num_compartments),columns = range(num_compartments))
-        #Initialize 3d DataArray with numchem data varaiables and coordinates of 7 x 7 (figure out a better way (no panels) later)
-        #D_array = pd.Panel(items = ic.Compound,major_axis = range(num_compartments),minor_axis = range(num_compartments)).to_xarray()
-        #Initialize output - the calculated fugacity of every compartment
-        col_name = pd.Series(index = range(num_compartments))
-        for i in range(num_compartments):
-            col_name[i] = 'f'+str(i+1)
-        fw_out = pd.DataFrame(index = ic['Compound'],columns = col_name)
-        
-        #generate matrix. Names of D values in ic must conform to these labels:
-        #DTj for total D val from compartment j and D_jk for transfer between compartments j and k
-        #Initialize a blank matrix of D values. We will iterate across this to solve for each compound
-        D_mat = pd.DataFrame(index = range(num_compartments),columns = range(num_compartments))
-        #initialize a blank dataframe for input vectors, RHS of matrix
-        inp_val = pd.DataFrame(index = range(num_compartments),columns = ic.Compound)
-        for chem in ic.index: #Index of chemical i
-            for j in D_mat.index: #compartment j, index of D_mat
-                #Define RHS input for every compartment j
-                inp_name = 'inp_' + str(j + 1) #must have an input for every compartment, even if it is zero
-                inp_val.iloc[j,chem] = -ic.loc[chem,inp_name]
-                for k in D_mat.columns: #compartment k, column of D_mat
-                    if j == k:
-                        DT = 'DT' + str(j + 1)
-                        D_mat.iloc[j,k] = -ic.loc[chem,DT]
-                    else:
-                        D_val = 'D_' +str(k+1)+str(j+1) #label compartments from 1
-                        if D_val in ic.columns: #Check if there is transfer between the two compartments
-                            D_mat.iloc[j,k] = ic.loc[chem,D_val]
-                        else:
-                            D_mat.iloc[j,k] = 0 #If no transfer, set to 0
-            #Solve for fugacities f = D_mat\inp_val
-            lhs = np.array(D_mat,dtype = float)
-            rhs = np.array(inp_val.iloc[:,chem],dtype = float)
-            fugs = np.linalg.solve(lhs,rhs)
-            fw_out.iloc[chem,:] = fugs
-        
-        return fw_out
-
-    def backward_calc(self,ic,num_compartments,target_conc = 1,target_emiss = 1):
-        """ Inverse modelling to determine emissions from measured concentrations
-        as selected by the user through the 'target' attribute.
-        Initial_calcs (ic) are calculated at the initialization of the model and 
-        include the matrix values DTi, D_ij and the target fugacity (where given)
-        for each compartment. This method needs a target fugacity (NOT concentration)
-        to function, but the input in chemsumm is a concentration. num_compartments (numc) defines the 
-        size of the matrix, target_conc tells what compartment (numbered from 1 not 0)
-        the concentration corresponds with, while target_emiss defines which compartment
-        the emissions are to. Default = 1, Lair in ppLFER-MUM. Currently, the output is
-        a dataframe with the fugacities of each compartment and the emissions in g/h.
-        """
-        #Initialize outputs
-        #pdb.set_trace()
-        col_name = pd.Series(index = range(num_compartments))
-        for i in range(num_compartments):
-            col_name[i] = 'f'+str(i+1) #Fugacity for every compartment
-        #Emissions for the target_emiss compartment
-        col_name[num_compartments+1] = 'emiss_'+str(target_emiss)
-        bw_out = pd.DataFrame(index = ic['Compound'],columns = col_name)        
-        #Define target name and check if there is a value for it in the ic dataframe. If not, abort
-        targ_name = 'targ_' + str(target_conc)
-        if targ_name not in ic.columns:
-            return'Please define a target concentration for the chosen compartment, comp_' + str(target_conc)
-        #initialize a matrix of numc x numc compartments.
-        D_mat = pd.DataFrame(index = range(num_compartments),columns = range(num_compartments))
-        #initialize a blank dataframe for input vectors, RHS of matrix.
-        inp_val = pd.DataFrame(index = range(num_compartments),columns = ic.Compound)
-        #Loop over the chemicals, solving for each.
-        for chem in ic.index: #Index of chemical i starting at 0
-            #Put the target fugacity into the output
-            bw_out.iloc[chem,target_conc-1] = ic.loc[chem,targ_name]
-            #Double loop to set matrix values
-            j = 0 #Index to pull values from ic
-            while j < num_compartments: #compartment j, index of D_mat
-                #Define RHS = -Inp(j) - D(Tj)*f(T) for every compartment j using target T
-                D_val = 'D_' +str(target_conc)+str(j+1) #label compartments from 1
-                inp_name = 'inp_' + str(j + 1) #must have an input for every compartment, even if it is zero
-                if j+1 == target_conc: #Need to use DT value for target concentration
-                    DT = 'DT' + str(j + 1)
-                    if j+1 == target_emiss: #Set -Inp(j) to zero for the targ_emiss row, we will subtract GCb(target_emiss) later
-                        inp_val.iloc[j,chem] = ic.loc[chem,DT] * bw_out.iloc[chem,target_conc-1]
-                    else:
-                        inp_val.iloc[j,chem] = ic.loc[chem,DT] * bw_out.iloc[chem,target_conc-1]-ic.loc[chem,inp_name]
-                elif D_val in ic.columns: #check if there is a D(Tj) value
-                    if j+1 == target_emiss: #This is clunky but hopefully functional
-                        inp_val.iloc[j,chem] = -ic.loc[chem,D_val] * bw_out.iloc[chem,target_conc-1]
-                    else:
-                        inp_val.iloc[j,chem] = -ic.loc[chem,inp_name] - ic.loc[chem,D_val]*bw_out.iloc[chem,target_conc-1]
-                else: #If there is no D(Tj) then RHS = -Inp(j), unless it is the target_emiss column again
-                    if j+1 == target_emiss: 
-                        inp_val.iloc[j,chem] = 0
-                    else:
-                        inp_val.iloc[j,chem] = -ic.loc[chem,inp_name]
-          
-                #Set D values across each row
-                k = 0 #Compartment index
-                kk = 0 #Index to fill matrix
-                while k < num_compartments: #compartment k, column of D_mat
-                    if (k+1) == target_conc:
-                        k += 1
-                    if j == k:
-                        DT = 'DT' + str(j + 1)
-                        D_mat.iloc[j,kk] = -ic.loc[chem,DT]
-                    else:
-                        D_val = 'D_' +str(k+1)+str(j+1) #label compartments from 1
-                        if D_val in ic.columns: #Check if there is transfer between the two compartments
-                            D_mat.iloc[j,kk] = ic.loc[chem,D_val]
-                        else:
-                            D_mat.iloc[j,kk] = 0 #If no transfer, set to 0
-                    if k+1 == num_compartments: #Final column is the input to the target_emiss compartment
-                        if (j+1) == target_emiss: #This is 1 for the target_emiss column and 0 everywhere else
-                            D_mat.iloc[j,kk+1] = 1
-                        else:
-                            D_mat.iloc[j,kk+1] = 0
-                    k +=1
-                    kk += 1
-                j += 1
-            #Solve for fugsinp = D_mat\inp_val, the last value in fugs is the total inputs
-            lhs = np.array(D_mat,dtype = float)
-            rhs = np.array(inp_val.iloc[:,chem],dtype = float)
-            fugsinp = np.linalg.solve(lhs,rhs)
-            #Subtract out the Gcb to get emissions from total inputs
-            gcb_name = 'Gcb_' + str(target_emiss)
-            fugsinp[-1] = fugsinp[-1] - ic.loc[chem,gcb_name]
-            #Multiply by molar mass to get g/h output
-            fugsinp[-1] = fugsinp[-1] * ic.loc[chem,'MolMass']
-            #bwout units are mol/m³/pa for fugacities, mol/h for emissions
-            bw_out.iloc[chem,0:target_conc-1] = fugsinp[0:target_conc-1]
-            bw_out.iloc[chem,target_conc:] = fugsinp[target_conc-1:]
-        return bw_out
-            
-    
-    
     
     
     
