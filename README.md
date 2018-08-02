@@ -1,2 +1,2 @@
-# ppLFERMUM
-ppLFER-MUM model of Rodgers et al (2018), based on MUM (Diamond et al., 2001)
+# Diamond Lab group fugacity model class. Generic fugacity model with matrix generation/solution 
+# capabilities.
