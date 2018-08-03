@@ -14,13 +14,13 @@ def ppLFER(L,S,A,B,V,l,s,a,b,v,c):
     res = L*l+S*s+A*a+B*b+V*v+c
     return res
 
-def vant_conv(dU,T2,k1,T1 = 298.15,):
+def vant_conv(dU,T2,K1,T1 = 298.15,):
     """Van't Hoff equation conversion of partition coefficients (Kij) from T1 to T2 (K)
-    The default value for T1 is 298.15K. Activation energy should be in J. The 
+    The default value for T1 is 298.15K. Enthalpy of phase change (dU) should be in J. The 
     result (res) will be K2 at T2
     """
     R = 8.314 #J/mol/K
-    res =  k1 * np.exp((dU / R) * (1 / T1 - 1 / T2))
+    res =  K1 * np.exp((dU / R) * (1 / T1 - 1 / T2))
     return res
     
 def arr_conv(Ea,T2,k1,T1 = 298.15,):

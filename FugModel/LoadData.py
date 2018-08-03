@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Load Data for BC Blues Model
+Load Data for ppLFERMUM Model
 Created on Fri Jun 15 14:51:15 2018
 
 @author: Tim Rodgers

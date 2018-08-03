@@ -21,7 +21,7 @@ from abc import ABCMeta, abstractmethod
 class FugModel(metaclass=ABCMeta):
     """ Fugacity model object, as described by Mackay (2001). This class will
     contain fugacity models, such as ppLFERMUM (Rodgers et al., 2018), the Multimedia 
-    Indoor Model (), and the Bioretention Cell Blues (BCBlues Rodgers et al., unpublished).
+    Indoor Model (), and the Bioretention Cell Blues (BCBlues - Rodgers et al., unpublished).
     The FugModel object is itself an abstract base class (ABC) and so cannot be
     instantiated by itself. The input_calcs abstractmethod needs to be defined for each model.
     Fugacity models have a number of shared attributes and methods, as defined below.
@@ -73,7 +73,7 @@ class FugModel(metaclass=ABCMeta):
     def forward_calc_ss(self,ic,num_compartments):
         """ Perform forward calculations to determine model steady state fugacities
         based on input emissions. Initial_calcs (ic) are calculated at the initialization
-        of the chosen model and include the matrix values DTi, and D_ij for each compartment
+        of the chosen model and include the matrix values DTi, and D_ij for each compartment i
         as well as a column named compound
         num_compartments (numc) defines the size of the matrix
         """
