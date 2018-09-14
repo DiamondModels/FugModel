@@ -74,7 +74,7 @@ class FugModel(metaclass=ABCMeta):
         """ Perform forward calculations to determine model steady state fugacities
         based on input emissions. Initial_calcs (ic) are calculated at the initialization
         of the chosen model and include the matrix values DTi, and D_ij for each compartment i
-        as well as a column named compound
+        as well as a column named compound, data must be sorted by compound
         num_compartments (numc) defines the size of the matrix
         """
         #Determine number of chemicals
