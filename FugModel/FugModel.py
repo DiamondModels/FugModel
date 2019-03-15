@@ -73,48 +73,46 @@ class FugModel(metaclass=ABCMeta):
     def forward_calc_ss(self,ic,num_compartments):
         """ Perform forward calculations to determine model steady state fugacities
         based on input emissions. Initial_calcs (ic) are calculated at the initialization
-        of the chosen model and include the matrix values DTi, and D_ij for each compartment i
-        as well as a column named compound
-        num_compartments (numc) defines the size of the matrix
+        of the chosen model and include the matrix values DTi, and D_ij for each compartment
+        as well as a column named compound num_compartments (numc) defines the size of the matrix
         """
         #Determine number of chemicals
-        #pdb.set_trace()
-        numchems = 0
-        for chems in ic.Compound:
-            numchems = numchems + 1
+        pdb.set_trace()
+        numc  = num_compartments
+        try:
+            numchems = len(ic.Compound)
+        except AttributeError: #Error handling for different models
+            numchems = len(ic.index)
             
-        #Initialize output - the calculated fugacity of every compartment
-        col_name = pd.Series(index = range(num_compartments))
-        for i in range(num_compartments):
+        #Initialize output - the calculated fugacity (or activity) of every compartment
+        col_name = pd.Series(index = range(numc))
+        for i in range(numc):
             col_name[i] = 'f'+str(i+1)
-        fw_out = pd.DataFrame(index = ic['Compound'],columns = col_name)
-        
+        try:
+            fw_out = pd.DataFrame(index = ic['Compound'],columns = col_name)
+        except KeyError:
+            fw_out = pd.DataFrame(index = ic.index,columns = col_name)
         #generate matrix. Names of D values in ic must conform to these labels:
         #DTj for total D val from compartment j and D_jk for transfer between compartments j and k
         #Initialize a blank matrix of D values. We will iterate across this to solve for each compound
-        D_mat = pd.DataFrame(index = range(num_compartments),columns = range(num_compartments))
+        D_mat = np.zeros((numchems,numc,numc))
         #initialize a blank dataframe for input vectors, RHS of matrix
-        inp_val = pd.DataFrame(index = range(num_compartments),columns = ic.Compound)
-        for chem in ic.index: #Index of chemical i
-            for j in D_mat.index: #compartment j, index of D_mat
-                #Define RHS input for every compartment j
-                inp_name = 'inp_' + str(j + 1) #must have an input for every compartment, even if it is zero
-                inp_val.iloc[j,chem] = -ic.loc[chem,inp_name]
-                for k in D_mat.columns: #compartment k, column of D_mat
-                    if j == k:
-                        DT = 'DT' + str(j + 1)
-                        D_mat.iloc[j,k] = -ic.loc[chem,DT]
-                    else:
-                        D_val = 'D_' +str(k+1)+str(j+1) #label compartments from 1
-                        if D_val in ic.columns: #Check if there is transfer between the two compartments
-                            D_mat.iloc[j,k] = ic.loc[chem,D_val]
-                        else:
-                            D_mat.iloc[j,k] = 0 #If no transfer, set to 0
+        inp_val = np.zeros([numchems,numc])
+        for j in range(numc): #compartment j, row index
+            #Define RHS input for every compartment j
+            inp_name = 'inp_' + str(j + 1) #must have an input for every compartment, even if it is zero
+            inp_val[:,j] = -ic.loc[:,inp_name]
+            for k in range(numc): #compartment k, column index
+                if j == k:
+                    DT = 'DT' + str(j + 1)
+                    D_mat[:,j,k] = -ic.loc[:,DT]
+                else:
+                    D_val = 'D_' +str(k+1)+str(j+1) #label compartments from 1
+                    if D_val in ic.columns: #Check if there is transfer between the two compartments
+                        D_mat[:,j,k] = ic.loc[:,D_val]
             #Solve for fugacities f = D_mat\inp_val
-            lhs = np.array(D_mat,dtype = float)
-            rhs = np.array(inp_val.iloc[:,chem],dtype = float)
-            fugs = np.linalg.solve(lhs,rhs)
-            fw_out.iloc[chem,:] = fugs
+        fugs = np.linalg.solve(D_mat,inp_val)
+        fw_out.iloc[:,:] = fugs
         
         return fw_out
 
